@@ -4,11 +4,12 @@ CXXFLAGS = -std=c++17 -O2 -s -target arm-linux-musleabi -mcpu=cortex_a7 -static 
 LDFLAGS = -static
 
 TARGET = extension/bin/rm2manga
-SRCS = src/main.cpp
+SRCS = src/main.cpp src/stb_impl.cpp src/stb_tt_impl.cpp
+HDRS = $(wildcard src/*.hpp)
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
+$(TARGET): $(SRCS) $(HDRS)
 	@mkdir -p extension/bin
 	$(CXX) $(CXXFLAGS) $(SRCS) -o $(TARGET)
 	@ls -lh $(TARGET)

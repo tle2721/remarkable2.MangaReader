@@ -9,8 +9,10 @@
 #include <unistd.h>
 #include <queue>
 #include <mutex>
+#include <condition_variable>
 #include <thread>
 #include <atomic>
+#include <chrono>
 
 namespace kindle {
 
@@ -20,7 +22,8 @@ enum class EventType {
     TOUCH_MOVE,
     TOUCH_UP,
     KEY_PREV_PAGE,
-    KEY_NEXT_PAGE
+    KEY_NEXT_PAGE,
+    ASYNC_WAKE
 };
 
 struct InputEvent {
@@ -37,7 +40,9 @@ private:
     std::atomic<bool> running_{false};
     std::thread thread_;
     std::mutex queue_mutex_;
+    std::condition_variable queue_cv_;
     std::queue<InputEvent> event_queue_;
+    bool wake_pending_ = false;
 
 public:
     InputKindle() = default;
@@ -98,6 +103,7 @@ public:
     void stop() {
         if (running_) {
             running_ = false;
+            queue_cv_.notify_all();
             if (thread_.joinable()) {
                 thread_.join();
             }
@@ -108,13 +114,48 @@ public:
 
     bool pollEvent(InputEvent& out) {
         std::lock_guard<std::mutex> lock(queue_mutex_);
-        if (event_queue_.empty()) return false;
-        out = event_queue_.front();
-        event_queue_.pop();
-        return true;
+        if (!event_queue_.empty()) {
+            out = event_queue_.front();
+            event_queue_.pop();
+            return true;
+        }
+        if (wake_pending_) {
+            wake_pending_ = false;
+            out = {EventType::ASYNC_WAKE, 0, 0};
+            return true;
+        }
+        return false;
     }
 
-    // Drop taps that queued up while the UI was blocked (e.g. during network calls)
+    // Zero-CPU blocking wait that wakes immediately on touch, button, or background worker signal
+    bool waitForEvent(InputEvent& out, int timeoutMs = 250) {
+        std::unique_lock<std::mutex> lock(queue_mutex_);
+        queue_cv_.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this]() {
+            return !event_queue_.empty() || wake_pending_ || !running_.load();
+        });
+        if (!event_queue_.empty()) {
+            out = event_queue_.front();
+            event_queue_.pop();
+            return true;
+        }
+        if (wake_pending_) {
+            wake_pending_ = false;
+            out = {EventType::ASYNC_WAKE, 0, 0};
+            return true;
+        }
+        return false;
+    }
+
+    // Coalesced wakeup from background threads (cover fetcher, async search, download queue)
+    void wake() {
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            wake_pending_ = true;
+        }
+        queue_cv_.notify_one();
+    }
+
+    // Drop taps that queued up while switching views
     void clear() {
         std::lock_guard<std::mutex> lock(queue_mutex_);
         std::queue<InputEvent>().swap(event_queue_);
@@ -213,12 +254,16 @@ private:
     }
 
     void pushEvent(const InputEvent& ev) {
-        std::lock_guard<std::mutex> lock(queue_mutex_);
-        // If queue has pending events, drop oldest so freshest touch events are always handled instantly
-        if (event_queue_.size() >= 16) {
-            event_queue_.pop();
+        {
+            std::lock_guard<std::mutex> lock(queue_mutex_);
+            // Prioritize TOUCH_DOWN and TOUCH_UP if queue overflows during rapid drag
+            if (event_queue_.size() >= 24) {
+                if (ev.type == EventType::TOUCH_MOVE) return;
+                event_queue_.pop();
+            }
+            event_queue_.push(ev);
         }
-        event_queue_.push(ev);
+        queue_cv_.notify_one();
     }
 };
 

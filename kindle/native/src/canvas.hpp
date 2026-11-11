@@ -122,26 +122,187 @@ public:
         drawText(text_x, text_y, label, scale, fg);
     }
 
-    // Scale and blit an 8-bit grayscale image to the canvas
-    void blitImage(int dstX, int dstY, int dstW, int dstH, const uint8_t* src, int srcW, int srcH) {
-        if (!src || dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
+    // Draw an elevated card with subtle e-ink drop shadow
+    void drawShadowCard(int x, int y, int w, int h, uint8_t bg = 0xFF, int border = 2, int shadowOffset = 4) {
+        if (shadowOffset > 0) {
+            fillRect(x + shadowOffset, y + shadowOffset, w, h, 0xD0);
+        }
+        fillRect(x, y, w, h, bg);
+        drawRect(x, y, w, h, 0x00, border);
+    }
 
-        for (int y = 0; y < dstH; ++y) {
-            int targetY = dstY + y;
-            if (targetY < 0 || targetY >= height_) continue;
+    // Detect non-white content bounding box for auto margin trimming on manga pages
+    static void detectContentBounds(const uint8_t* src, int srcW, int srcH,
+                                    int& cropX, int& cropY, int& cropW, int& cropH) {
+        cropX = 0;
+        cropY = 0;
+        cropW = srcW;
+        cropH = srcH;
+        if (!src || srcW < 64 || srcH < 64) return;
 
-            int srcY = (y * srcH) / dstH;
-            const uint8_t* srcRow = src + srcY * srcW;
-            uint8_t* dstRow = buffer_ + targetY * stride_;
+        // Ignore outermost 1% scan-border dust, cap max trim at 18% per side
+        const int edgeSkipX = std::max(2, srcW / 100);
+        const int edgeSkipY = std::max(2, srcH / 100);
+        const int maxTrimX = (srcW * 18) / 100;
+        const int maxTrimY = (srcH * 18) / 100;
+        const uint8_t inkThreshold = 236;
 
-            for (int x = 0; x < dstW; ++x) {
-                int targetX = dstX + x;
-                if (targetX < 0 || targetX >= width_) continue;
+        // Require at least ~0.4% ink pixels in a row/col to count as real panel/text content
+        const int minInkInRow = std::max(3, (srcW - 2 * edgeSkipX) / 220);
+        const int minInkInCol = std::max(3, (srcH - 2 * edgeSkipY) / 220);
 
-                int srcX = (x * srcW) / dstW;
-                dstRow[targetX] = srcRow[srcX];
+        int top = 0;
+        for (int y = edgeSkipY; y < maxTrimY; ++y) {
+            const uint8_t* row = src + y * srcW;
+            int ink = 0;
+            for (int x = edgeSkipX; x < srcW - edgeSkipX; x += 2) {
+                if (row[x] < inkThreshold && ++ink >= minInkInRow) break;
+            }
+            if (ink >= minInkInRow) {
+                top = std::max(0, y - 6);
+                break;
+            }
+            top = y;
+        }
+
+        int bottom = srcH - 1;
+        for (int y = srcH - 1 - edgeSkipY; y >= srcH - maxTrimY; --y) {
+            const uint8_t* row = src + y * srcW;
+            int ink = 0;
+            for (int x = edgeSkipX; x < srcW - edgeSkipX; x += 2) {
+                if (row[x] < inkThreshold && ++ink >= minInkInRow) break;
+            }
+            if (ink >= minInkInRow) {
+                bottom = std::min(srcH - 1, y + 6);
+                break;
+            }
+            bottom = y;
+        }
+
+        int left = 0;
+        for (int x = edgeSkipX; x < maxTrimX; ++x) {
+            int ink = 0;
+            for (int y = edgeSkipY; y < srcH - edgeSkipY; y += 2) {
+                if (src[y * srcW + x] < inkThreshold && ++ink >= minInkInCol) break;
+            }
+            if (ink >= minInkInCol) {
+                left = std::max(0, x - 6);
+                break;
+            }
+            left = x;
+        }
+
+        int right = srcW - 1;
+        for (int x = srcW - 1 - edgeSkipX; x >= srcW - maxTrimX; --x) {
+            int ink = 0;
+            for (int y = edgeSkipY; y < srcH - edgeSkipY; y += 2) {
+                if (src[y * srcW + x] < inkThreshold && ++ink >= minInkInCol) break;
+            }
+            if (ink >= minInkInCol) {
+                right = std::min(srcW - 1, x + 6);
+                break;
+            }
+            right = x;
+        }
+
+        if (right - left > srcW / 2 && bottom - top > srcH / 2) {
+            cropX = left;
+            cropY = top;
+            cropW = right - left + 1;
+            cropH = bottom - top + 1;
+        }
+    }
+
+    // High-quality area-averaging / bilinear grayscale blitter with optional sub-region crop & e-ink contrast stretch
+    void blitImageRegion(int dstX, int dstY, int dstW, int dstH,
+                         const uint8_t* src, int srcW, int srcH,
+                         int cropX, int cropY, int cropW, int cropH,
+                         bool enhanceContrast = false) {
+        if (!src || !buffer_ || dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0) return;
+        cropX = std::max(0, std::min(srcW - 1, cropX));
+        cropY = std::max(0, std::min(srcH - 1, cropY));
+        cropW = std::max(1, std::min(srcW - cropX, cropW));
+        cropH = std::max(1, std::min(srcH - cropY, cropH));
+
+        // Precompute e-ink levels LUT: crushes faint JPEG paper gray (>244) to pure white
+        // and deepens dark gray ink (<18) to pure black for razor-sharp 300 PPI manga linework
+        uint8_t lut[256];
+        if (enhanceContrast) {
+            for (int i = 0; i < 256; ++i) {
+                if (i <= 18) lut[i] = 0;
+                else if (i >= 244) lut[i] = 255;
+                else lut[i] = static_cast<uint8_t>(((i - 18) * 255) / (244 - 18));
+            }
+        } else {
+            for (int i = 0; i < 256; ++i) lut[i] = static_cast<uint8_t>(i);
+        }
+
+        const int xStart = std::max(0, -dstX);
+        const int xEnd = std::min(dstW, width_ - dstX);
+        const int yStart = std::max(0, -dstY);
+        const int yEnd = std::min(dstH, height_ - dstY);
+        if (xStart >= xEnd || yStart >= yEnd) return;
+
+        // Downscaling path: integer box/area averaging prevents screentone moire & preserves small dialogue text
+        if (cropW > dstW && cropH > dstH) {
+            for (int y = yStart; y < yEnd; ++y) {
+                int sy0 = cropY + (y * cropH) / dstH;
+                int sy1 = cropY + ((y + 1) * cropH) / dstH;
+                if (sy1 <= sy0) sy1 = sy0 + 1;
+                if (sy1 > cropY + cropH) sy1 = cropY + cropH;
+
+                uint8_t* dstRow = buffer_ + (dstY + y) * stride_ + dstX;
+                for (int x = xStart; x < xEnd; ++x) {
+                    int sx0 = cropX + (x * cropW) / dstW;
+                    int sx1 = cropX + ((x + 1) * cropW) / dstW;
+                    if (sx1 <= sx0) sx1 = sx0 + 1;
+                    if (sx1 > cropX + cropW) sx1 = cropX + cropW;
+
+                    uint32_t sum = 0;
+                    uint32_t count = 0;
+                    for (int sy = sy0; sy < sy1; ++sy) {
+                        const uint8_t* srow = src + sy * srcW;
+                        for (int sx = sx0; sx < sx1; ++sx) {
+                            sum += srow[sx];
+                            ++count;
+                        }
+                    }
+                    dstRow[x] = lut[sum / count];
+                }
+            }
+            return;
+        }
+
+        // Upscaling or mixed-ratio path: 8-bit fixed-point bilinear interpolation
+        const int maxSrcX = cropX + cropW - 1;
+        const int maxSrcY = cropY + cropH - 1;
+        for (int y = yStart; y < yEnd; ++y) {
+            int64_t gy = (static_cast<int64_t>(y) * (cropH - 1) * 256) / std::max(1, dstH - 1);
+            int sy = cropY + static_cast<int>(gy >> 8);
+            int fy = static_cast<int>(gy & 0xFF);
+            int syNext = std::min(maxSrcY, sy + 1);
+
+            const uint8_t* row0 = src + sy * srcW;
+            const uint8_t* row1 = src + syNext * srcW;
+            uint8_t* dstRow = buffer_ + (dstY + y) * stride_ + dstX;
+
+            for (int x = xStart; x < xEnd; ++x) {
+                int64_t gx = (static_cast<int64_t>(x) * (cropW - 1) * 256) / std::max(1, dstW - 1);
+                int sx = cropX + static_cast<int>(gx >> 8);
+                int fx = static_cast<int>(gx & 0xFF);
+                int sxNext = std::min(maxSrcX, sx + 1);
+
+                int topVal = row0[sx] * (256 - fx) + row0[sxNext] * fx;
+                int botVal = row1[sx] * (256 - fx) + row1[sxNext] * fx;
+                int val = (topVal * (256 - fy) + botVal * fy + 32768) >> 16;
+                dstRow[x] = lut[std::max(0, std::min(255, val))];
             }
         }
+    }
+
+    // Scale and blit an 8-bit grayscale image to the canvas
+    void blitImage(int dstX, int dstY, int dstW, int dstH, const uint8_t* src, int srcW, int srcH, bool enhanceContrast = false) {
+        blitImageRegion(dstX, dstY, dstW, dstH, src, srcW, srcH, 0, 0, srcW, srcH, enhanceContrast);
     }
 };
 

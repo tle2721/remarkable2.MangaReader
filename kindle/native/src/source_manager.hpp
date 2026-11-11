@@ -153,43 +153,106 @@ public:
         return ok;
     }
 
+    std::string getSourceDisplayName(const std::string& id) const {
+        if (id == "all") return "All Sources";
+        for (const auto& s : available_sources_) {
+            if (s.id == id) return s.name;
+        }
+        return id.empty() ? "Local" : id;
+    }
+
+    std::vector<UnifiedManga> getPopularForSource(const std::string& srcId, std::string* errOut = nullptr) {
+        if (srcId == "all") {
+            std::vector<UnifiedManga> combined;
+            std::string e1, e2, e3;
+            auto md = fetchMangaDexPopular(&e1);
+            auto mf = fetchMangaFoxPopular(&e2);
+            auto mk = fetchMangaKatanaPopular(&e3);
+            // Interleave results across sources so top rows showcase variety
+            size_t maxLen = std::max({md.size(), mf.size(), mk.size()});
+            for (size_t i = 0; i < maxLen; ++i) {
+                if (i < md.size()) combined.push_back(md[i]);
+                if (i < mf.size()) combined.push_back(mf[i]);
+                if (i < mk.size()) combined.push_back(mk[i]);
+            }
+            for (const auto& s : available_sources_) {
+                if (s.is_aidoku) {
+                    auto ai = fetchAidokuPopular(s.id, nullptr);
+                    combined.insert(combined.end(), ai.begin(), ai.end());
+                    break; // fetchAidokuPopular("", ...) queries Aidoku once; filter per source or all
+                }
+            }
+            if (combined.empty() && errOut) *errOut = !e1.empty() ? e1 : (!e2.empty() ? e2 : e3);
+            return combined;
+        }
+        if (srcId == "mangafox") return fetchMangaFoxPopular(errOut);
+        if (srcId == "mangakatana") return fetchMangaKatanaPopular(errOut);
+        if (srcId == "mangadex") return fetchMangaDexPopular(errOut);
+        return fetchAidokuPopular(srcId, errOut);
+    }
+
     std::vector<UnifiedManga> getPopular(std::string* errOut = nullptr) {
-        if (active_source_id_ == "mangafox") {
-            return fetchMangaFoxPopular(errOut);
+        return getPopularForSource(active_source_id_, errOut);
+    }
+
+    std::vector<UnifiedManga> searchSource(const std::string& srcId, const std::string& query, std::string* errOut = nullptr) {
+        if (srcId == "all") {
+            std::vector<UnifiedManga> combined;
+            std::string e1, e2, e3;
+            auto md = searchMangaDex(query, &e1);
+            auto mf = searchMangaFox(query, &e2);
+            auto mk = searchMangaKatana(query, &e3);
+            size_t maxLen = std::max({md.size(), mf.size(), mk.size()});
+            for (size_t i = 0; i < maxLen; ++i) {
+                if (i < md.size()) combined.push_back(md[i]);
+                if (i < mf.size()) combined.push_back(mf[i]);
+                if (i < mk.size()) combined.push_back(mk[i]);
+            }
+            bool hasAidoku = false;
+            for (const auto& s : available_sources_) {
+                if (s.is_aidoku) { hasAidoku = true; break; }
+            }
+            if (hasAidoku) {
+                Json::Value items = aidoku_client_.searchMangas(query, nullptr);
+                if (items.isArray()) {
+                    for (const auto& m : items.asArray()) {
+                        UnifiedManga um;
+                        um.id = m["id"].str();
+                        um.title = m["title"].str();
+                        um.author = m["author"].str();
+                        um.description = m["description"].str();
+                        um.cover_url = m["cover_url"].str(m["cover"].str());
+                        um.source_id = m["source"]["id"].str(m["source_id"].str());
+                        um.status = m["status"].str();
+                        if (!um.id.empty() && !um.source_id.empty()) combined.push_back(um);
+                    }
+                }
+            }
+            if (combined.empty() && errOut && !e1.empty() && !e2.empty() && !e3.empty()) {
+                *errOut = e1;
+            }
+            return combined;
         }
-        if (active_source_id_ == "mangakatana") {
-            return fetchMangaKatanaPopular(errOut);
-        }
-        if (active_source_id_ == "mangadex") {
-            return fetchMangaDexPopular(errOut);
-        }
-        return fetchAidokuPopular(active_source_id_, errOut);
+        if (srcId == "mangafox") return searchMangaFox(query, errOut);
+        if (srcId == "mangakatana") return searchMangaKatana(query, errOut);
+        if (srcId == "mangadex") return searchMangaDex(query, errOut);
+        return searchAidoku(srcId, query, errOut);
     }
 
     std::vector<UnifiedManga> search(const std::string& query, std::string* errOut = nullptr) {
-        if (active_source_id_ == "mangafox") {
-            return searchMangaFox(query, errOut);
-        }
-        if (active_source_id_ == "mangakatana") {
-            return searchMangaKatana(query, errOut);
-        }
-        if (active_source_id_ == "mangadex") {
-            return searchMangaDex(query, errOut);
-        }
-        return searchAidoku(active_source_id_, query, errOut);
+        return searchSource(active_source_id_, query, errOut);
+    }
+
+    std::vector<UnifiedChapter> getChaptersForSource(const std::string& srcId, const std::string& mangaId, std::string* errOut = nullptr) {
+        std::string resolved = (srcId.empty() || srcId == "all") ? "mangadex" : srcId;
+        if (resolved == "mangafox") return fetchMangaFoxChapters(mangaId, errOut);
+        if (resolved == "mangakatana") return fetchMangaKatanaChapters(mangaId, errOut);
+        if (resolved == "mangadex") return fetchMangaDexChapters(mangaId, errOut);
+        return fetchAidokuChapters(resolved, mangaId, errOut);
     }
 
     std::vector<UnifiedChapter> getChapters(const std::string& mangaId, std::string* errOut = nullptr) {
-        if (active_source_id_ == "mangafox") {
-            return fetchMangaFoxChapters(mangaId, errOut);
-        }
-        if (active_source_id_ == "mangakatana") {
-            return fetchMangaKatanaChapters(mangaId, errOut);
-        }
-        if (active_source_id_ == "mangadex") {
-            return fetchMangaDexChapters(mangaId, errOut);
-        }
-        return fetchAidokuChapters(active_source_id_, mangaId, errOut);
+        return getChaptersForSource(active_source_id_, mangaId, errOut);
     }
 
     std::string downloadAidokuChapter(const std::string& sourceId,
@@ -336,7 +399,9 @@ private:
             for (const auto& item : jsonFeed.asArray()) {
                 UnifiedChapter ch;
                 ch.id = item["id"].str();
-                ch.chapterNum = std::to_string(static_cast<int>(item["chapter_num"].num(0.0)));
+                char cbuf[32];
+                std::snprintf(cbuf, sizeof(cbuf), "%.4g", item["chapter_num"].num(0.0));
+                ch.chapterNum = cbuf;
                 ch.title = item["title"].str();
                 ch.scanlator = item["scanlator"].str();
                 ch.source_id = "mangadex";
