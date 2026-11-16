@@ -254,11 +254,11 @@ Item {
                         border.width: 2
                         border.color: "#000000"
 
-                        Text {
+                        IconLabel {
                             anchors.centerIn: parent
-                            text: "↻ Sync"
-                            font.pixelSize: 22
-                            font.bold: true
+                            icon: "refresh"
+                            text: "Sync"
+                            pixelSize: 22
                             color: syncArea.pressed ? "#FFFFFF" : "#000000"
                         }
                         MouseArea {
@@ -275,11 +275,11 @@ Item {
                         border.width: 2
                         border.color: "#000000"
 
-                        Text {
+                        IconLabel {
                             anchors.centerIn: parent
-                            text: "↻ Updates"
-                            font.pixelSize: 22
-                            font.bold: true
+                            icon: "sparkle"
+                            text: "Updates"
+                            pixelSize: 22
                             color: updArea.pressed ? "#FFFFFF" : "#000000"
                         }
                         MouseArea {
@@ -452,12 +452,13 @@ Item {
                                 border.width: 2
                                 border.color: "#000000"
 
-                                Text {
+                                IconLabel {
                                     id: dlTxt
                                     anchors.centerIn: parent
-                                    text: "✓ " + String(modelData.downloaded_count)
-                                    font.pixelSize: 19
-                                    font.bold: true
+                                    icon: "check"
+                                    text: String(modelData.downloaded_count)
+                                    pixelSize: 19
+                                    spacing: 5
                                     color: "#000000"
                                 }
                             }

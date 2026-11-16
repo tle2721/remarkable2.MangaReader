@@ -261,14 +261,6 @@ private:
     Json::Value buildInstalledSourcesList(bool* aidokuOnlineOut = nullptr) {
         Json::Value list = Json::Value::array();
 
-        // Built-in MangaDex source is always available
-        Json::Value md = Json::Value::object();
-        md["id"] = "mangadex";
-        md["name"] = "MangaDex";
-        md["version"] = 5;
-        md["builtin"] = true;
-        list.push(md);
-
         bool online = aidoku_.ensureRunning();
         if (aidokuOnlineOut) *aidokuOnlineOut = online;
         if (online) {
@@ -276,8 +268,6 @@ private:
             Json::Value installed = aidoku_.listInstalledSources(&err);
             if (installed.isArray()) {
                 for (const auto& s : installed.asArray()) {
-                    std::string sid = s["id"].str();
-                    if (sid == "multi.mangadex") continue;
                     Json::Value copy = s;
                     copy["builtin"] = false;
                     list.push(std::move(copy));
@@ -379,14 +369,7 @@ private:
             fast["downloads"] = state_.listDownloads();
             fast["queue"] = serializeDownloadQueue();
             fast["settings"] = state_.getSettings();
-            Json::Value fastMd = Json::Value::array();
-            Json::Value md = Json::Value::object();
-            md["id"] = "mangadex";
-            md["name"] = "MangaDex";
-            md["version"] = 5;
-            md["builtin"] = true;
-            fastMd.push(md);
-            fast["installed_sources"] = std::move(fastMd);
+            fast["installed_sources"] = Json::Value::array();
             fast["source_config"] = aidoku_.getSourceConfig();
             fast["aidoku_online"] = false;
             ipc_.sendJson(EVT_BOOTSTRAP, fast);
@@ -563,9 +546,9 @@ private:
             }
         }
 
-        // 2. MangaDex chapter via MangaDex client
-        if (sourceId == "mangadex") {
-            fs::path chFolder = state_.localChaptersDir() / "mangadex" / mangaId / chapterId;
+        // User-installed multi.mangadex Aidoku extension via native adapter
+        if (sourceId == mangadex::kExtSourceId) {
+            fs::path chFolder = state_.localChaptersDir() / mangadex::kExtSourceId / mangaId / chapterId;
             std::error_code ec;
             if (fs::exists(chFolder, ec) && !fs::is_empty(chFolder, ec)) {
                 return pageCache_.prepareFolder(chFolder.string(), errOut);
@@ -585,7 +568,7 @@ private:
             return pageCache_.prepareFolder(chFolder.string(), errOut);
         }
 
-        // 3. Aidoku chapter via local Aidoku server
+        // 2. Aidoku chapter via local Aidoku server
         if (onProgress) onProgress("Preparing chapter from " + (sourceName.empty() ? sourceId : sourceName) + "...", 15);
         std::string dlErr;
         std::string cbzPath = aidoku_.downloadChapter(
@@ -709,15 +692,16 @@ private:
             fs::path dest = state_.coversDir() / (util::hashSlug(mkey) + ".jpg");
             std::error_code ec;
 
+            std::string url = task.coverUrl;
+            if (url.empty()) {
+                url = coverDb_.lookupCoverUrl(task.sourceId, task.mangaId);
+            }
+
             bool ok = false;
             if (fs::exists(dest, ec) && fs::file_size(dest, ec) > 128) {
                 ok = true;
-            } else if (!task.coverUrl.empty()) {
-                ok = util::httpsDownloadFile(task.coverUrl, dest, 20);
-            }
-
-            if (!ok && !task.title.empty()) {
-                ok = mangadex_.fetchCoverByTitle(task.title, dest);
+            } else if (!url.empty()) {
+                ok = util::httpsDownloadFile(url, dest, 20);
             }
 
             if (ok && !shuttingDown_.load()) {
@@ -729,6 +713,9 @@ private:
                 ev["manga_id"] = task.mangaId;
                 ev["cover_path"] = uri;
                 ipc_.sendJson(EVT_COVER_UPDATED, ev);
+            } else if (!ok) {
+                std::lock_guard<std::mutex> lock(coverMu_);
+                attemptedCovers_.erase(mkey);
             }
         }
     }
@@ -775,8 +762,16 @@ private:
             Json::Value combined = Json::Value::array();
             std::string errors;
 
-            // 1. MangaDex results (if filter is "all" or "mangadex")
-            if (filter == "all" || filter == "mangadex") {
+            bool online = false;
+            Json::Value installed = buildInstalledSourcesList(&online);
+            bool hasUserMangaDex = false;
+            bool hasOtherAidoku = false;
+            for (const auto& s : installed.asArray()) {
+                if (s["id"].str() == mangadex::kExtSourceId) hasUserMangaDex = true;
+                else hasOtherAidoku = true;
+            }
+
+            if (hasUserMangaDex && (filter == "all" || filter == mangadex::kExtSourceId)) {
                 std::string mdErr;
                 Json::Value mdItems = mangadex_.queryMangaList(query, mode, &mdErr);
                 if (searchSeq_.load() != mySeq) return;
@@ -785,67 +780,63 @@ private:
                         combined.push(enrichItem(m));
                     }
                 }
-                if (!mdErr.empty() && filter == "mangadex") {
+                if (!mdErr.empty() && filter == mangadex::kExtSourceId) {
                     errors = mdErr;
                 }
             }
 
-            // 2. Aidoku results (if filter is "all" or specific Aidoku source)
-            if (filter != "mangadex") {
-                bool online = false;
-                Json::Value installed = buildInstalledSourcesList(&online);
-                if (online && !installed.empty()) {
-                    Json::Value rawItems = Json::Value::array();
-                    std::string aiErr;
+            if (online && hasOtherAidoku && filter != mangadex::kExtSourceId) {
+                Json::Value rawItems = Json::Value::array();
+                std::string aiErr;
 
-                    if (query.empty()) {
-                        bool hitCache = false;
-                        if (!forceRefresh) {
-                            std::lock_guard<std::mutex> lock(discoverMu_);
-                            if (discoverCache_.isArray() && !discoverCache_.empty() &&
-                                (util::nowSeconds() - discoverCacheTs_) < 60) {
-                                rawItems = discoverCache_;
-                                hitCache = true;
-                            }
+                if (query.empty()) {
+                    bool hitCache = false;
+                    if (!forceRefresh) {
+                        std::lock_guard<std::mutex> lock(discoverMu_);
+                        if (discoverCache_.isArray() && !discoverCache_.empty() &&
+                            (util::nowSeconds() - discoverCacheTs_) < 60) {
+                            rawItems = discoverCache_;
+                            hitCache = true;
                         }
-                        if (!hitCache) {
-                            rawItems = aidoku_.searchMangas("", &aiErr);
-                            if (searchSeq_.load() != mySeq) return;
-                            if (aiErr.empty() && rawItems.isArray() && !rawItems.empty()) {
-                                std::lock_guard<std::mutex> lock(discoverMu_);
-                                discoverCache_ = rawItems;
-                                discoverCacheTs_ = util::nowSeconds();
-                            }
-                        }
-                    } else {
-                        rawItems = aidoku_.searchMangas(query, &aiErr);
                     }
+                    if (!hitCache) {
+                        rawItems = aidoku_.searchMangas("", &aiErr);
+                        if (searchSeq_.load() != mySeq) return;
+                        if (aiErr.empty() && rawItems.isArray() && !rawItems.empty()) {
+                            std::lock_guard<std::mutex> lock(discoverMu_);
+                            discoverCache_ = rawItems;
+                            discoverCacheTs_ = util::nowSeconds();
+                        }
+                    }
+                } else {
+                    rawItems = aidoku_.searchMangas(query, &aiErr);
+                }
 
+                if (searchSeq_.load() != mySeq) return;
+
+                size_t beforeAidoku = combined.size();
+                for (const auto& m : rawItems.asArray()) {
+                    std::string sid = m["source"]["id"].str(m["source_id"].str());
+                    if (sid == mangadex::kExtSourceId) continue;
+                    if (filter != "all" && sid != filter) continue;
+                    combined.push(enrichItem(m));
+                }
+
+                // Fallback for search-only .aix plugins that return 0 items on empty query q=""
+                if (query.empty() && combined.size() == beforeAidoku && aiErr.empty()) {
+                    std::string fbErr;
+                    Json::Value fbItems = aidoku_.searchMangas("a", &fbErr);
                     if (searchSeq_.load() != mySeq) return;
-
-                    for (const auto& m : rawItems.asArray()) {
+                    for (const auto& m : fbItems.asArray()) {
                         std::string sid = m["source"]["id"].str(m["source_id"].str());
-                        if (sid == "multi.mangadex") continue;
+                        if (sid == mangadex::kExtSourceId) continue;
                         if (filter != "all" && sid != filter) continue;
                         combined.push(enrichItem(m));
                     }
+                }
 
-                    // Fallback for search-only .aix plugins that return 0 items on empty query q=""
-                    if (query.empty() && combined.empty() && aiErr.empty()) {
-                        std::string fbErr;
-                        Json::Value fbItems = aidoku_.searchMangas("a", &fbErr);
-                        if (searchSeq_.load() != mySeq) return;
-                        for (const auto& m : fbItems.asArray()) {
-                            std::string sid = m["source"]["id"].str(m["source_id"].str());
-                            if (sid == "multi.mangadex") continue;
-                            if (filter != "all" && sid != filter) continue;
-                            combined.push(enrichItem(m));
-                        }
-                    }
-
-                    if (!aiErr.empty() && combined.empty() && filter != "all") {
-                        errors = aiErr;
-                    }
+                if (!aiErr.empty() && combined.empty() && filter != "all") {
+                    errors = aiErr;
                 }
             }
 
@@ -917,7 +908,7 @@ private:
             std::string err;
             Json::Value freshChapters = Json::Value::array();
 
-            if (sourceId == "mangadex") {
+            if (sourceId == mangadex::kExtSourceId) {
                 if (forceRefresh || cached.empty()) {
                     Json::Value details = mangadex_.getMangaDetails(mangaId, &err);
                     if (details.isObject()) {
@@ -994,7 +985,7 @@ private:
             // Ensure chapters list is cached so prev/next chapter links work even on direct Continue Reading jump
             Json::Value chapters = state_.getCachedChapters(sourceId, mangaId);
             if (chapters.empty()) {
-                if (sourceId == "mangadex") {
+                if (sourceId == mangadex::kExtSourceId) {
                     std::string chErr;
                     Json::Value fetched = mangadex_.getChapters(mangaId, &chErr);
                     if (fetched.isArray() && !fetched.empty()) {
@@ -1123,7 +1114,7 @@ private:
 
                 spawnAsync([this, sid, sname, mid, title, coverUrl, add, req]() {
                     std::string err;
-                    if (sid != "mangadex") {
+                    if (sid != mangadex::kExtSourceId) {
                         if (add) aidoku_.addToLibrary(sid, mid, &err);
                         else aidoku_.removeFromLibrary(sid, mid, &err);
                     }
@@ -1157,7 +1148,7 @@ private:
                 state_.saveProgress(sid, sname, mid, mtitle, cid, chNum, hasNum, chTitle,
                                     pageIdx, pageCount, completed);
 
-                if (completed && sid != "mangadex") {
+                if (completed && sid != mangadex::kExtSourceId) {
                     spawnAsync([this, sid, mid, cid]() {
                         aidoku_.markChapterRead(sid, mid, cid, nullptr);
                     });
@@ -1181,7 +1172,7 @@ private:
                 std::string cid = req["chapter_id"].str();
                 bool read = req["read"].boolean(true);
                 state_.markChapterRead(sid, mid, cid, read);
-                if (read && sid != "mangadex") {
+                if (read && sid != mangadex::kExtSourceId) {
                     spawnAsync([this, sid, mid, cid]() {
                         aidoku_.markChapterRead(sid, mid, cid, nullptr);
                     });

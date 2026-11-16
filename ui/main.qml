@@ -376,11 +376,11 @@ Rectangle {
             border.width: 2
             border.color: "#000000"
 
-            Text {
+            IconLabel {
                 anchors.centerIn: parent
-                text: "✕ Exit"
-                font.pixelSize: 22
-                font.bold: true
+                icon: "close"
+                text: "Exit"
+                pixelSize: 22
                 color: exitArea.pressed ? "#FFFFFF" : "#000000"
             }
             MouseArea {
@@ -449,11 +449,11 @@ Rectangle {
             border.width: 2
             border.color: "#000000"
 
-            Text {
+            IconLabel {
                 anchors.centerIn: parent
-                text: "▶ Resume"
-                font.pixelSize: 21
-                font.bold: true
+                icon: "play"
+                text: "Resume"
+                pixelSize: 21
                 color: headerResumeArea.pressed ? "#000000" : "#FFFFFF"
             }
             MouseArea {
@@ -778,10 +778,10 @@ Rectangle {
 
             Repeater {
                 model: [
-                    { id: "library", label: "Library", icon: "▣" },
-                    { id: "recent", label: "Recent", icon: "◷" },
-                    { id: "browse", label: "Browse", icon: "⌕" },
-                    { id: "downloads", label: "Downloads", icon: "⬇" }
+                    { id: "library", label: "Library", icon: "library" },
+                    { id: "recent", label: "Recent", icon: "clock" },
+                    { id: "browse", label: "Browse", icon: "search" },
+                    { id: "downloads", label: "Downloads", icon: "download" }
                 ]
                 delegate: Rectangle {
                     id: navTabBtn
@@ -803,10 +803,11 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 10
 
-                        Text {
-                            text: modelData.icon
-                            font.pixelSize: 26
-                            font.bold: true
+                        AppIcon {
+                            name: modelData.icon
+                            width: 24
+                            height: 24
+                            anchors.verticalCenter: parent.verticalCenter
                             color: (navTabBtn.selected || navTabArea.pressed) ? "#FFFFFF" : "#000000"
                         }
 

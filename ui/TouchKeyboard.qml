@@ -12,7 +12,7 @@ Rectangle {
     property bool shifted: false
     property bool symbolsMode: false
     property bool urlMode: false
-    property string submitLabel: "Search ↵"
+    property string submitLabel: "Search"
 
     signal keyTyped(string text)
     signal backspace()
@@ -139,14 +139,22 @@ Rectangle {
                         border.width: 2
                         border.color: "#000000"
 
+                        AppIcon {
+                            visible: keyCell.rawKey === "SHIFT" || keyCell.rawKey === "BKSP"
+                            anchors.centerIn: parent
+                            name: keyCell.rawKey === "SHIFT" ? "shift" : "backspace"
+                            width: 28
+                            height: 28
+                            color: (keyArea.pressed || (keyCell.rawKey === "SHIFT" && kbRoot.shifted)) ? "#FFFFFF" : "#000000"
+                        }
+
                         Text {
+                            visible: keyCell.rawKey !== "SHIFT" && keyCell.rawKey !== "BKSP"
                             anchors.centerIn: parent
                             font.pixelSize: keyCell.isSpecial ? 22 : 28
                             font.bold: true
                             color: (keyArea.pressed || (keyCell.rawKey === "SHIFT" && kbRoot.shifted)) ? "#FFFFFF" : "#000000"
                             text: {
-                                if (keyCell.rawKey === "SHIFT") return "⇧";
-                                if (keyCell.rawKey === "BKSP") return "⌫";
                                 if (keyCell.rawKey === "ABC") return "ABC";
                                 return (!kbRoot.symbolsMode && kbRoot.shifted) ? keyCell.rawKey.toUpperCase() : keyCell.rawKey;
                             }
@@ -267,11 +275,12 @@ Rectangle {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: "Hide ▾"
-                    font.pixelSize: 22
-                    font.bold: true
+                    text: "Hide"
+                    rightIcon: "chevron-down"
+                    pixelSize: 22
+                    spacing: 6
                     color: hideArea.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {
@@ -289,11 +298,11 @@ Rectangle {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
                     text: kbRoot.submitLabel
-                    font.pixelSize: 23
-                    font.bold: true
+                    rightIcon: "enter"
+                    pixelSize: 23
                     color: submitArea.pressed ? "#000000" : "#FFFFFF"
                 }
                 MouseArea {

@@ -309,12 +309,8 @@ def main() -> int:
                 conn,
                 lambda t, d: t == EVT_BOOTSTRAP and d.get("aidoku_online") is True,
             )
-            installed_aidoku = [s for s in boot["installed_sources"] if not s.get("builtin")]
-            assert installed_aidoku == [], (
-                f"Expected zero pre-installed Aidoku sources, got {installed_aidoku}"
-            )
-            assert any(s.get("id") == "mangadex" for s in boot["installed_sources"]), (
-                f"Expected builtin MangaDex source in {boot['installed_sources']}"
+            assert boot["installed_sources"] == [], (
+                f"Expected zero pre-installed sources, got {boot['installed_sources']}"
             )
             assert boot["source_config"]["source_lists"] == [], (
                 f"Expected empty default source_lists, got {boot['source_config']}"
@@ -349,7 +345,7 @@ def main() -> int:
             send_ipc(conn, REQ_INSTALL_SOURCE, {"source_id": "ext.beta", "install": True})
             wait_for_event(
                 conn,
-                lambda t, d: t == EVT_SOURCES_LIST and len(d.get("installed", [])) == 3,
+                lambda t, d: t == EVT_SOURCES_LIST and len(d.get("installed", [])) == 2,
             )
 
             # Discover filtered to ext.alpha only

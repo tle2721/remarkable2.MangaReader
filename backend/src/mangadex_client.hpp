@@ -1,9 +1,15 @@
 #pragma once
 
+// Runtime adapter for user-installed `multi.mangadex` Aidoku extension.
+// Not active or visible unless the user explicitly installs `multi.mangadex`
+// from their own Aidoku source list (`rakuyomi` v1.22.2 uses WASM ABI 0.6 and
+// cannot execute `multi.mangadex` v8 WASM ABI 0.7 directly).
+
 #include "json.hpp"
 #include "util.hpp"
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -14,11 +20,12 @@ namespace mangadex {
 
 namespace fs = std::filesystem;
 
+inline constexpr const char* kExtSourceId = "multi.mangadex";
+
 inline std::string pickLocalized(const Json::Value& dict, const Json::Value& altTitles = Json::Value()) {
     if (dict.isString()) return dict.str();
     if (dict.isObject()) {
         if (dict.has("en") && !dict["en"].str().empty()) return dict["en"].str();
-        // Check altTitles for English title if primary is romanized Japanese
         if (altTitles.isArray()) {
             for (const auto& alt : altTitles.asArray()) {
                 if (alt.isObject() && alt.has("en") && !alt["en"].str().empty()) {
@@ -52,11 +59,11 @@ public:
 
         out["id"] = id;
         Json::Value src = Json::Value::object();
-        src["id"] = "mangadex";
+        src["id"] = kExtSourceId;
         src["name"] = "MangaDex";
-        src["version"] = 5;
+        src["version"] = 8;
         out["source"] = src;
-        out["source_id"] = "mangadex";
+        out["source_id"] = kExtSourceId;
         out["source_name"] = "MangaDex";
 
         std::string title = pickLocalized(attrs["title"], attrs["altTitles"]);
@@ -88,16 +95,16 @@ public:
 
     Json::Value queryMangaList(const std::string& query, const std::string& mode, std::string* errOut = nullptr) {
         std::string url = apiBase_ + "/manga?limit=24"
-                          "&includes[]=cover_art&includes[]=author"
-                          "&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica"
+                          "&includes%5B%5D=cover_art&includes%5B%5D=author"
+                          "&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica"
                           "&hasAvailableChapters=true"
-                          "&availableTranslatedLanguage[]=en";
+                          "&availableTranslatedLanguage%5B%5D=en";
         if (mode == "latest") {
-            url += "&order[latestUploadedChapter]=desc";
-        } else if (mode == "popular" || query.empty()) {
-            url += "&order[followedCount]=desc";
+            url += "&order%5BlatestUploadedChapter%5D=desc";
+        } else if (mode == "popular" || mode == "discover" || query.empty()) {
+            url += "&order%5BfollowedCount%5D=desc";
         } else {
-            url += "&title=" + util::urlEncode(query) + "&order[relevance]=desc";
+            url += "&title=" + util::urlEncode(query) + "&order%5Brelevance%5D=desc";
         }
 
         std::string body;
@@ -121,7 +128,7 @@ public:
 
     Json::Value getMangaDetails(const std::string& mangaId, std::string* errOut = nullptr) {
         std::string url = apiBase_ + "/manga/" + util::urlEncode(mangaId) +
-                          "?includes[]=cover_art&includes[]=author";
+                          "?includes%5B%5D=cover_art&includes%5B%5D=author";
         std::string body;
         if (!util::httpsGetString(url, body, 20)) {
             if (errOut) *errOut = "Failed to fetch manga details from MangaDex";
@@ -141,14 +148,14 @@ public:
         int offset = 0;
         const int limit = 500;
 
-        for (int page = 0; page < 6; ++page) {  // up to 3,000 chapters
+        for (int page = 0; page < 6; ++page) {
             std::string url = apiBase_ + "/manga/" + util::urlEncode(mangaId) +
-                              "/feed?translatedLanguage[]=en"
+                              "/feed?translatedLanguage%5B%5D=en"
                               "&limit=" + std::to_string(limit) +
                               "&offset=" + std::to_string(offset) +
-                              "&order[chapter]=asc&order[volume]=asc"
-                              "&includes[]=scanlation_group"
-                              "&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica";
+                              "&order%5Bchapter%5D=asc&order%5Bvolume%5D=asc"
+                              "&includes%5B%5D=scanlation_group"
+                              "&contentRating%5B%5D=safe&contentRating%5B%5D=suggestive&contentRating%5B%5D=erotica";
             std::string body;
             if (!util::httpsGetString(url, body, 30)) {
                 if (page == 0 && errOut) *errOut = "Failed to fetch chapter feed from MangaDex";
@@ -164,7 +171,6 @@ public:
             const auto& arr = root["data"].asArray();
             for (const auto& ch : arr) {
                 const Json::Value& attrs = ch["attributes"];
-                // Skip external-only chapters (e.g., MangaPlus links with 0 hosted pages)
                 if (!attrs["externalUrl"].isNull() && !attrs["externalUrl"].str().empty() &&
                     attrs["pages"].integer(0) <= 0) {
                     continue;
@@ -172,7 +178,7 @@ public:
 
                 Json::Value item = Json::Value::object();
                 item["id"] = ch["id"].str();
-                item["source_id"] = "mangadex";
+                item["source_id"] = kExtSourceId;
                 item["manga_id"] = mangaId;
 
                 std::string chStr = attrs["chapter"].str();
@@ -295,26 +301,6 @@ public:
             return false;
         }
         return true;
-    }
-
-    // Lookup and cache 256px cover art for Aidoku mangas that don't expose cover_url
-    bool fetchCoverByTitle(const std::string& title, const fs::path& destCoverPath) {
-        if (title.empty()) return false;
-        std::string url = apiBase_ + "/manga?limit=1&includes[]=cover_art"
-                          "&contentRating[]=safe&contentRating[]=suggestive&contentRating[]=erotica"
-                          "&order[relevance]=desc&title=" + util::urlEncode(title);
-        std::string body;
-        if (!util::httpsGetString(url, body, 15)) return false;
-
-        bool ok = false;
-        Json::Value root = Json::parse(body, &ok);
-        if (!ok || !root["data"].isArray() || root["data"].empty()) return false;
-
-        Json::Value parsed = parseMangaObject(root["data"][0]);
-        std::string coverUrl = parsed["cover_url"].str();
-        if (coverUrl.empty()) return false;
-
-        return util::httpsDownloadFile(coverUrl, destCoverPath, 20);
     }
 };
 

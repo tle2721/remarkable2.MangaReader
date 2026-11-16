@@ -188,11 +188,11 @@ Rectangle {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: "⬇ Next 5"
-                    font.pixelSize: 20
-                    font.bold: true
+                    icon: "download"
+                    text: "Next 5"
+                    pixelSize: 20
                     color: dl5Area.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {
@@ -209,11 +209,11 @@ Rectangle {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: "⬇ All Unread"
-                    font.pixelSize: 20
-                    font.bold: true
+                    icon: "download"
+                    text: "All Unread"
+                    pixelSize: 20
                     color: dlAllArea.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {
@@ -230,11 +230,11 @@ Rectangle {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: detailRoot.loading ? "Loading..." : "↻ Refresh"
-                    font.pixelSize: 20
-                    font.bold: true
+                    icon: detailRoot.loading ? "" : "refresh"
+                    text: detailRoot.loading ? "Loading..." : "Refresh"
+                    pixelSize: 20
                     color: refArea.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {
@@ -347,10 +347,10 @@ Rectangle {
                     border.color: "#000000"
                     opacity: enabled ? 1.0 : 0.45
 
-                    Text {
+                    IconLabel {
                         anchors.centerIn: parent
-                        font.pixelSize: 23
-                        font.bold: true
+                        icon: detailRoot.primaryActionChapter ? "play" : ""
+                        pixelSize: 23
                         color: startReadArea.pressed ? "#000000" : "#FFFFFF"
                         text: {
                             let ch = detailRoot.primaryActionChapter;
@@ -358,9 +358,9 @@ Rectangle {
                             let numStr = (ch.chapter_num !== undefined && ch.chapter_num !== null)
                                          ? ("Ch. " + ch.chapter_num) : "Chapter";
                             if (ch.id === detailRoot.resumeChapterId && detailRoot.resumePage > 0) {
-                                return "▶ Continue " + numStr + " (p. " + (detailRoot.resumePage + 1) + ")";
+                                return "Continue " + numStr + " (p. " + (detailRoot.resumePage + 1) + ")";
                             }
-                            return "▶ Read " + numStr;
+                            return "Read " + numStr;
                         }
                     }
 
@@ -382,11 +382,11 @@ Rectangle {
                     border.width: 2
                     border.color: "#000000"
 
-                    Text {
+                    IconLabel {
                         anchors.centerIn: parent
-                        text: detailRoot.inLibrary ? "✓ In Library" : "+ Add Library"
-                        font.pixelSize: 22
-                        font.bold: true
+                        icon: detailRoot.inLibrary ? "check" : ""
+                        text: detailRoot.inLibrary ? "In Library" : "+ Add Library"
+                        pixelSize: 22
                         color: (detailRoot.inLibrary || libToggleArea.pressed) ? "#FFFFFF" : "#000000"
                     }
 
@@ -627,11 +627,11 @@ Rectangle {
                     border.width: 2
                     border.color: "#000000"
 
-                    Text {
+                    AppIcon {
                         anchors.centerIn: parent
-                        text: modelData.read ? "✓" : "○"
-                        font.pixelSize: 23
-                        font.bold: true
+                        name: modelData.read ? "check" : "circle"
+                        width: 22
+                        height: 22
                         color: markArea.pressed ? "#FFFFFF" : "#000000"
                     }
                     MouseArea {
@@ -653,11 +653,12 @@ Rectangle {
                     border.width: 2
                     border.color: "#000000"
 
-                    Text {
+                    IconLabel {
                         anchors.centerIn: parent
-                        text: modelData.downloaded ? "✓ Saved" : "⬇"
-                        font.pixelSize: modelData.downloaded ? 18 : 23
-                        font.bold: true
+                        icon: modelData.downloaded ? "check" : "download"
+                        text: modelData.downloaded ? "Saved" : ""
+                        pixelSize: modelData.downloaded ? 18 : 24
+                        spacing: 6
                         color: (!modelData.downloaded && dlSingleArea.pressed) ? "#FFFFFF" : "#000000"
                     }
 

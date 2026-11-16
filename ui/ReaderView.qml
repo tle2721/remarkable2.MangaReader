@@ -340,11 +340,11 @@ FocusScope {
             border.width: 2
             border.color: "#000000"
 
-            Text {
+            IconLabel {
                 anchors.centerIn: parent
-                text: "✕ Exit 2x Zoom"
-                font.pixelSize: 20
-                font.bold: true
+                icon: "close"
+                text: "Exit 2x Zoom"
+                pixelSize: 20
                 color: exitZoomArea.pressed ? "#000000" : "#FFFFFF"
             }
             MouseArea {
@@ -355,17 +355,17 @@ FocusScope {
         }
 
         Rectangle {
-            width: 140
+            width: 152
             height: 56
             color: zoomHudArea.pressed ? "#000000" : "#FFFFFF"
             border.width: 2
             border.color: "#000000"
 
-            Text {
+            IconLabel {
                 anchors.centerIn: parent
-                text: "☰ Controls"
-                font.pixelSize: 20
-                font.bold: true
+                icon: "menu"
+                text: "Controls"
+                pixelSize: 20
                 color: zoomHudArea.pressed ? "#FFFFFF" : "#000000"
             }
             MouseArea {
@@ -599,11 +599,11 @@ FocusScope {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: "⟳ Clear Ghost"
-                    font.pixelSize: 20
-                    font.bold: true
+                    icon: "refresh"
+                    text: "Clear Ghost"
+                    pixelSize: 20
                     color: flashArea.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {

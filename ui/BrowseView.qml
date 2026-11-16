@@ -209,12 +209,13 @@ Item {
                 border.width: (browseRoot.keyboardOpen && browseRoot.activeInputTarget === "search") ? 3 : 2
                 border.color: "#000000"
 
-                Text {
+                AppIcon {
                     anchors.left: parent.left
-                    anchors.leftMargin: 20
+                    anchors.leftMargin: 18
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "⌕"
-                    font.pixelSize: 28
+                    name: "search"
+                    width: 26
+                    height: 26
                     color: "#000000"
                 }
 
@@ -244,7 +245,7 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     text: (browseRoot.installedSources && browseRoot.installedSources.length > 0)
                           ? "Search installed manga sources..."
-                          : "Configure source lists first (⚙ Sources)..."
+                          : "Configure source lists first (Sources)..."
                     font.pixelSize: 24
                     color: "#666666"
                 }
@@ -273,11 +274,11 @@ Item {
                     border.width: 1
                     border.color: "#000000"
 
-                    Text {
+                    AppIcon {
                         anchors.centerIn: parent
-                        text: "✕"
-                        font.pixelSize: 22
-                        font.bold: true
+                        name: "close"
+                        width: 20
+                        height: 20
                         color: clrInArea.pressed ? "#FFFFFF" : "#000000"
                     }
                     MouseArea {
@@ -327,11 +328,11 @@ Item {
                 border.width: 2
                 border.color: "#000000"
 
-                Text {
+                IconLabel {
                     anchors.centerIn: parent
-                    text: "⚙ Sources (" + (browseRoot.installedSources ? browseRoot.installedSources.length : 0) + ")"
-                    font.pixelSize: 22
-                    font.bold: true
+                    icon: "settings"
+                    text: "Sources (" + (browseRoot.installedSources ? browseRoot.installedSources.length : 0) + ")"
+                    pixelSize: 22
                     color: extBtnArea.pressed ? "#FFFFFF" : "#000000"
                 }
                 MouseArea {
@@ -367,12 +368,13 @@ Item {
                     border.width: 2
                     border.color: "#000000"
 
-                    Text {
+                    IconLabel {
                         id: discTxt
                         anchors.centerIn: parent
-                        text: "✦ Discover"
-                        font.pixelSize: 21
-                        font.bold: discPill.activePill
+                        icon: "sparkle"
+                        text: "Discover"
+                        pixelSize: 21
+                        bold: discPill.activePill
                         color: (discPill.activePill || discArea.pressed) ? "#FFFFFF" : "#000000"
                     }
                     MouseArea {
@@ -390,18 +392,18 @@ Item {
 
                 // Force Refresh Discover Pill
                 Rectangle {
-                    width: refDiscTxt.implicitWidth + 28
+                    width: 56
                     height: 56
                     color: refDiscArea.pressed ? "#000000" : "#FFFFFF"
                     border.width: 2
                     border.color: "#000000"
 
-                    Text {
+                    AppIcon {
                         id: refDiscTxt
                         anchors.centerIn: parent
-                        text: "↻"
-                        font.pixelSize: 23
-                        font.bold: true
+                        name: "refresh"
+                        width: 22
+                        height: 22
                         color: refDiscArea.pressed ? "#FFFFFF" : "#000000"
                     }
                     MouseArea {
@@ -583,11 +585,11 @@ Item {
                         border.width: 2
                         border.color: "#000000"
 
-                        Text {
+                        IconLabel {
                             anchors.centerIn: parent
-                            text: "⚙ Configure Source Lists  →"
-                            font.pixelSize: 24
-                            font.bold: true
+                            icon: "settings"
+                            text: "Configure Source Lists  →"
+                            pixelSize: 24
                             color: cfgOnboardingArea.pressed ? "#000000" : "#FFFFFF"
                         }
                         MouseArea {
@@ -631,11 +633,11 @@ Item {
                         border.width: 2
                         border.color: "#000000"
 
-                        Text {
+                        IconLabel {
                             anchors.centerIn: parent
-                            text: "✦ Discover Manga"
-                            font.pixelSize: 21
-                            font.bold: true
+                            icon: "sparkle"
+                            text: "Discover Manga"
+                            pixelSize: 21
                             color: retryDiscArea.pressed ? "#000000" : "#FFFFFF"
                         }
                         MouseArea {
@@ -737,11 +739,12 @@ Item {
                                 border.width: 2
                                 border.color: modelData.in_library ? "#FFFFFF" : "#000000"
 
-                                Text {
+                                IconLabel {
                                     anchors.centerIn: parent
-                                    text: modelData.in_library ? "✓ Saved" : "+"
-                                    font.pixelSize: modelData.in_library ? 19 : 28
-                                    font.bold: true
+                                    icon: modelData.in_library ? "check" : ""
+                                    text: modelData.in_library ? "Saved" : "+"
+                                    pixelSize: modelData.in_library ? 19 : 28
+                                    spacing: 6
                                     color: (modelData.in_library || quickLibArea.pressed) ? "#FFFFFF" : "#000000"
                                 }
 
@@ -843,11 +846,11 @@ Item {
                         border.width: 2
                         border.color: "#000000"
 
-                        Text {
+                        IconLabel {
                             anchors.centerIn: parent
-                            text: browseRoot.sourcesLoading ? "Fetching..." : "↻ Refresh"
-                            font.pixelSize: 21
-                            font.bold: true
+                            icon: browseRoot.sourcesLoading ? "" : "refresh"
+                            text: browseRoot.sourcesLoading ? "Fetching..." : "Refresh"
+                            pixelSize: 21
                             color: reloadModalArea.pressed ? "#FFFFFF" : "#000000"
                         }
                         MouseArea {
@@ -983,12 +986,13 @@ Item {
                     border.width: (browseRoot.keyboardOpen && browseRoot.activeInputTarget === "src_filter") ? 3 : 2
                     border.color: "#000000"
 
-                    Text {
+                    AppIcon {
                         anchors.left: parent.left
-                        anchors.leftMargin: 18
+                        anchors.leftMargin: 16
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "⌕"
-                        font.pixelSize: 24
+                        name: "search"
+                        width: 22
+                        height: 22
                         color: "#000000"
                     }
 
@@ -1045,11 +1049,11 @@ Item {
                         border.width: 1
                         border.color: "#000000"
 
-                        Text {
+                        AppIcon {
                             anchors.centerIn: parent
-                            text: "✕"
-                            font.pixelSize: 20
-                            font.bold: true
+                            name: "close"
+                            width: 18
+                            height: 18
                             color: "#000000"
                         }
                         MouseArea {
@@ -1414,11 +1418,11 @@ Item {
                                 border.width: 2
                                 border.color: "#000000"
 
-                                Text {
+                                IconLabel {
                                     anchors.centerIn: parent
-                                    text: "↻ Reload Disk File"
-                                    font.pixelSize: 19
-                                    font.bold: true
+                                    icon: "refresh"
+                                    text: "Reload Disk File"
+                                    pixelSize: 19
                                     color: reloadDiskArea.pressed ? "#FFFFFF" : "#000000"
                                 }
                                 MouseArea {
@@ -1713,7 +1717,7 @@ Item {
                             spacing: 4
 
                             Text {
-                                text: "Tip: You can also edit settings.json over SSH and tap \"↻ Reload Disk File\":"
+                                text: "Tip: You can also edit settings.json over SSH and tap \"Reload Disk File\":"
                                 font.pixelSize: 18
                                 font.bold: true
                                 color: "#222222"
@@ -1745,10 +1749,10 @@ Item {
         active: browseRoot.keyboardOpen
         urlMode: browseRoot.activeInputTarget === "new_url" || browseRoot.activeInputTarget === "raw_json"
         submitLabel: {
-            if (browseRoot.activeInputTarget === "new_url") return "Add URL ↵";
-            if (browseRoot.activeInputTarget === "raw_json") return "Save JSON ↵";
-            if (browseRoot.activeInputTarget === "src_filter") return "Done ↵";
-            return "Search ↵";
+            if (browseRoot.activeInputTarget === "new_url") return "Add URL";
+            if (browseRoot.activeInputTarget === "raw_json") return "Save JSON";
+            if (browseRoot.activeInputTarget === "src_filter") return "Done";
+            return "Search";
         }
         z: 80
 

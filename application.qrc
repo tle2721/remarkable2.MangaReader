@@ -1,5 +1,7 @@
 <RCC>
     <qresource>
+        <file>ui/AppIcon.qml</file>
+        <file>ui/IconLabel.qml</file>
         <file>ui/main.qml</file>
         <file>ui/LibraryView.qml</file>
         <file>ui/RecentView.qml</file>

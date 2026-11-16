@@ -13,8 +13,10 @@
 #include <mutex>
 #include <string>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
@@ -54,6 +56,10 @@ public:
             serverBin_ = envBin;
         } else if (::access("./backend/aidoku-server", X_OK) == 0) {
             serverBin_ = fs::absolute("./backend/aidoku-server").string();
+        } else if (::access("/home/root/xovi/exthome/appload/rm2manga/backend/aidoku-server", X_OK) == 0) {
+            serverBin_ = "/home/root/xovi/exthome/appload/rm2manga/backend/aidoku-server";
+        } else if (::access("/home/root/.vellum/bin/aidoku-server", X_OK) == 0) {
+            serverBin_ = "/home/root/.vellum/bin/aidoku-server";
         } else {
             serverBin_ = "/home/root/xovi/exthome/appload/koreader/plugins/rakuyomi.koplugin/server";
         }
@@ -72,6 +78,56 @@ public:
 
     const std::string& homeDir() const { return homeDir_; }
     std::string settingsFilePath() const { return (fs::path(homeDir_) / "settings.json").string(); }
+
+    bool bootstrapServerIfMissing() {
+        if (std::getenv("RM2MANGA_AIDOKU_SERVER") || std::getenv("RM2MANGA_RAKUYOMI_SERVER")) {
+            return false;
+        }
+        Json::Value cfg = getSourceConfig();
+        if (!cfg["source_lists"].isArray() || cfg["source_lists"].empty()) {
+            return false;
+        }
+
+        struct utsname uts {};
+        if (::uname(&uts) != 0) return false;
+        std::string mach = uts.machine;
+        std::string zipUrl;
+        if (mach.find("aarch64") != std::string::npos || mach.find("arm64") != std::string::npos) {
+            zipUrl = "https://github.com/hanatsumi/rakuyomi/releases/download/v1.22.2/rakuyomi-aarch64.zip";
+        } else if (mach.find("arm") != std::string::npos) {
+            zipUrl = "https://github.com/hanatsumi/rakuyomi/releases/download/v1.22.2/rakuyomi-kindle.zip";
+        } else {
+            return false;
+        }
+
+        fs::path tmpZip = "/tmp/rm2manga_aidoku_runtime.zip";
+        fs::path tmpExtract = "/tmp/rm2manga_aidoku_extract";
+        std::error_code ec;
+        fs::remove_all(tmpExtract, ec);
+        if (!util::httpsDownloadFile(zipUrl, tmpZip, 60)) {
+            return false;
+        }
+
+        fs::create_directories(tmpExtract, ec);
+        auto r = util::runProcess({"/usr/bin/unzip", "-q", "-o", tmpZip.string(), "rakuyomi.koplugin/server", "-d", tmpExtract.string()}, 30);
+        fs::remove(tmpZip, ec);
+        fs::path extracted = tmpExtract / "rakuyomi.koplugin" / "server";
+        if (r.exitCode != 0 || !fs::exists(extracted, ec)) {
+            fs::remove_all(tmpExtract, ec);
+            return false;
+        }
+
+        fs::path destBin = fs::path(homeDir_).parent_path().parent_path() / "backend" / "aidoku-server";
+        fs::create_directories(destBin.parent_path(), ec);
+        fs::copy_file(extracted, destBin, fs::copy_options::overwrite_existing, ec);
+        fs::remove_all(tmpExtract, ec);
+        if (ec || !fs::exists(destBin, ec)) {
+            return false;
+        }
+        ::chmod(destBin.c_str(), 0755);
+        serverBin_ = destBin.string();
+        return ::access(serverBin_.c_str(), X_OK) == 0;
+    }
 
     void ensureSettingsInitialized() {
         std::error_code ec;
@@ -327,7 +383,9 @@ public:
         if (healthCheck(1)) return true;
 
         if (::access(serverBin_.c_str(), X_OK) != 0) {
-            return false;
+            if (!bootstrapServerIfMissing()) {
+                return false;
+            }
         }
 
         ensureSettingsInitialized();

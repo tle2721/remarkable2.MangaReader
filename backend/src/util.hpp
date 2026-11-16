@@ -248,17 +248,35 @@ inline bool hasBinary(const char* absPath) {
 
 inline std::string getUserAgentForUrl(const std::string& url) {
     if (url.find("mangadex.org") != std::string::npos) {
-        return "rm2manga/1.0 (https://github.com/tungle/rm2manga)";
+        return "rm2manga/1.0.2 (https://github.com/tle2721/remarkable2.MangaReader)";
     }
     return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 }
 
 inline std::string getRefererForUrl(const std::string& url) {
-    if (url.find("mfcdn.net") != std::string::npos || url.find("fanfox.net") != std::string::npos) {
+    if (url.find("mfcdn.net") != std::string::npos ||
+        url.find("fanfox.net") != std::string::npos ||
+        url.find("mangafox") != std::string::npos ||
+        url.find("zjcdn") != std::string::npos) {
         return "https://fanfox.net/";
     }
-    if (url.find("mangakatana.com") != std::string::npos) {
+    if (url.find("mangahere") != std::string::npos) {
+        return "https://www.mangahere.cc/";
+    }
+    if (url.find("mangakatana") != std::string::npos) {
         return "https://mangakatana.com/";
+    }
+    if (url.find("mkklcdn") != std::string::npos ||
+        url.find("2xstorage") != std::string::npos ||
+        url.find("manganato") != std::string::npos ||
+        url.find("mangakakalot") != std::string::npos) {
+        return "https://chapmanganato.to/";
+    }
+    if (url.find("asuracomic") != std::string::npos) {
+        return "https://asuracomic.net/";
+    }
+    if (url.find("toonily") != std::string::npos) {
+        return "https://toonily.com/";
     }
     if (url.find("mangadex.org") != std::string::npos) {
         return "https://mangadex.org/";
@@ -274,19 +292,48 @@ inline std::string getRefererForUrl(const std::string& url) {
     return "";
 }
 
+inline std::vector<std::string> candidateCurlPaths() {
+    static const char* kPaths[] = {
+        "/home/root/.vellum/bin/curl",
+        "/opt/bin/curl",
+        "/usr/bin/curl",
+        "/bin/curl",
+        "/opt/homebrew/bin/curl"
+    };
+    std::vector<std::string> out;
+    for (const char* p : kPaths) {
+        if (hasBinary(p)) out.emplace_back(p);
+    }
+    return out;
+}
+
+inline std::vector<std::string> candidateWgetPaths() {
+    static const char* kPaths[] = {
+        "/home/root/.vellum/bin/wget",
+        "/opt/bin/wget",
+        "/usr/bin/wget",
+        "/bin/wget"
+    };
+    std::vector<std::string> out;
+    for (const char* p : kPaths) {
+        if (hasBinary(p)) out.emplace_back(p);
+    }
+    return out;
+}
+
 inline bool httpsGetString(const std::string& url, std::string& bodyOut, int timeoutSec = 25) {
     std::string ua = getUserAgentForUrl(url);
     std::string ref = getRefererForUrl(url);
-    if (hasBinary("/usr/bin/wget")) {
+
+    for (const auto& curlBin : candidateCurlPaths()) {
         std::vector<std::string> args = {
-            "/usr/bin/wget", "-q", "-T", std::to_string(timeoutSec),
-            "-U", ua
+            curlBin, "-g", "-fsSL", "--max-time", std::to_string(timeoutSec),
+            "-A", ua
         };
         if (!ref.empty()) {
-            args.push_back("--header=Referer: " + ref);
+            args.push_back("-e");
+            args.push_back(ref);
         }
-        args.push_back("-O");
-        args.push_back("-");
         args.push_back(url);
         auto r = runProcess(args, timeoutSec + 5);
         if (r.exitCode == 0 && !r.stdoutData.empty()) {
@@ -294,15 +341,17 @@ inline bool httpsGetString(const std::string& url, std::string& bodyOut, int tim
             return true;
         }
     }
-    if (hasBinary("/usr/bin/curl")) {
+
+    for (const auto& wgetBin : candidateWgetPaths()) {
         std::vector<std::string> args = {
-            "/usr/bin/curl", "-fsSL", "--max-time", std::to_string(timeoutSec),
-            "-A", ua
+            wgetBin, "-q", "-T", std::to_string(timeoutSec),
+            "-U", ua
         };
         if (!ref.empty()) {
-            args.push_back("-e");
-            args.push_back(ref);
+            args.push_back("--header=Referer: " + ref);
         }
+        args.push_back("-O");
+        args.push_back("-");
         args.push_back(url);
         auto r = runProcess(args, timeoutSec + 5);
         if (r.exitCode == 0 && !r.stdoutData.empty()) {
@@ -322,25 +371,10 @@ inline bool httpsDownloadFile(const std::string& url, const fs::path& dest, int 
     std::string ua = getUserAgentForUrl(url);
     std::string ref = getRefererForUrl(url);
     bool ok = false;
-    if (hasBinary("/usr/bin/wget")) {
+
+    for (const auto& curlBin : candidateCurlPaths()) {
         std::vector<std::string> args = {
-            "/usr/bin/wget", "-q", "-T", std::to_string(timeoutSec),
-            "-U", ua
-        };
-        if (!ref.empty()) {
-            args.push_back("--header=Referer: " + ref);
-        }
-        args.push_back("-O");
-        args.push_back(tmp.string());
-        args.push_back(url);
-        auto r = runProcess(args, timeoutSec + 5);
-        if (r.exitCode == 0 && fs::exists(tmp, ec) && fs::file_size(tmp, ec) > 0) {
-            ok = true;
-        }
-    }
-    if (!ok && hasBinary("/usr/bin/curl")) {
-        std::vector<std::string> args = {
-            "/usr/bin/curl", "-fsSL", "--max-time", std::to_string(timeoutSec),
+            curlBin, "-g", "-fsSL", "--max-time", std::to_string(timeoutSec),
             "-A", ua
         };
         if (!ref.empty()) {
@@ -353,6 +387,27 @@ inline bool httpsDownloadFile(const std::string& url, const fs::path& dest, int 
         auto r = runProcess(args, timeoutSec + 5);
         if (r.exitCode == 0 && fs::exists(tmp, ec) && fs::file_size(tmp, ec) > 0) {
             ok = true;
+            break;
+        }
+    }
+
+    if (!ok) {
+        for (const auto& wgetBin : candidateWgetPaths()) {
+            std::vector<std::string> args = {
+                wgetBin, "-q", "-T", std::to_string(timeoutSec),
+                "-U", ua
+            };
+            if (!ref.empty()) {
+                args.push_back("--header=Referer: " + ref);
+            }
+            args.push_back("-O");
+            args.push_back(tmp.string());
+            args.push_back(url);
+            auto r = runProcess(args, timeoutSec + 5);
+            if (r.exitCode == 0 && fs::exists(tmp, ec) && fs::file_size(tmp, ec) > 0) {
+                ok = true;
+                break;
+            }
         }
     }
 

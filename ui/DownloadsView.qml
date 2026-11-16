@@ -138,11 +138,11 @@ Item {
                             border.width: 2
                             border.color: "#000000"
 
-                            Text {
+                            AppIcon {
                                 anchors.centerIn: parent
-                                text: "✕"
-                                font.pixelSize: 24
-                                font.bold: true
+                                name: "close"
+                                width: 22
+                                height: 22
                                 color: qCancelArea.pressed ? "#FFFFFF" : "#000000"
                             }
                             MouseArea {
@@ -214,7 +214,7 @@ Item {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "No downloaded chapters yet. Tap ⬇ on any manga chapter to read offline."
+                    text: "No downloaded chapters yet. Tap Download on any manga chapter to read offline."
                     font.pixelSize: 22
                     color: "#444444"
                 }
