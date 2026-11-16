@@ -133,7 +133,7 @@ rm2manga/
 ├── backend/src/             # C++ multi-threaded AppLoad backend (ARMv7 & AArch64)
 │   ├── main.cpp             # App coordination, IPC message loop, download queue
 │   ├── appload_ipc.hpp      # Zero-copy binary framing protocol
-│   ├── aidoku_client.hpp    # Aidoku daemon HTTP/UDS client & auto-bootstrapper
+│   ├── aidoku_client.hpp    # Aidoku daemon HTTP/UDS client
 │   ├── aidoku_db.hpp        # SQLite dynamic cover metadata loader
 │   ├── mangadex_client.hpp  # Runtime adapter when user installs multi.mangadex
 │   ├── cbz_extractor.hpp    # Multi-format image extractor & natural sort
